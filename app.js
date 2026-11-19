@@ -371,9 +371,16 @@ document.getElementById("forgotPassword").addEventListener("click", async () => 
     document.getElementById("authError").textContent = "Supabase is not configured.";
     return;
   }
-  const email = document.getElementById("authEmail").value.trim();
-  if (!email) {
-    document.getElementById("authError").textContent = "Enter your email first.";
+  const username = document.getElementById("authUsernameLogin").value.trim().toLowerCase();
+  if (!username) {
+    document.getElementById("authError").textContent = "Enter your username first.";
+    return;
+  }
+  const { data: email, error: lookupError } = await supabase.rpc("get_login_email", {
+    lookup_username: username
+  });
+  if (lookupError || !email) {
+    document.getElementById("authError").textContent = "Username not found.";
     return;
   }
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
