@@ -106,7 +106,7 @@ function showView(view) {
 function openTemplate(id) {
   activeTemplate = templates.find(t => t.id === id);
   document.getElementById("editorTitle").textContent = activeTemplate.title;
-  document.getElementById("editorCategory").textContent = (activeTemplate.category + " Letter").toUpper();
+  document.getElementById("editorCategory").textContent = (activeTemplate.category + " Letter").toUpperCase();
   renderForm();
   showView("editor");
   document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
@@ -115,7 +115,7 @@ function openTemplate(id) {
 function renderForm() {
   const form = document.getElementById("letterForm");
   form.innerHTML = templateFields[activeTemplate.id].map(field => {
-    if (field.section) return `<div class="field-section">${field.section.toUpper()}</div>`;
+    if (field.section) return `<div class="field-section">${field.section.toUpperCase()}</div>`;
     if (field.type === "textarea") return `<div class="field"><label>${field.label}</label><textarea name="${field.name}" placeholder="${field.placeholder || ""}"></textarea></div>`;
     if (field.type === "select") return `<div class="field"><label>${field.label}</label><select name="${field.name}">${field.options.map(o => `<option>${o}</option>`).join("")}</select></div>`;
     return `<div class="field"><label>${field.label}</label><input name="${field.name}" type="${field.type}" value="${field.type === "date" ? new Date().toISOString().slice(0,10) : ""}" placeholder="${field.placeholder || ""}"></div>`;
@@ -247,7 +247,7 @@ function updateUserUI() {
     const name = currentUser.user_metadata?.full_name || currentUser.email?.split("@")[0] || "User";
     profileName.textContent = name;
     profileSub.textContent = "Signed in";
-    avatar.textContent = name.split(" ").map(n => n[0]).join("").slice(0,2).toUpper();
+    avatar.textContent = name.split(" ").map(n => n[0]).join("").slice(0,2).toUpperCase();
   } else {
     profileName.textContent = "Sign in";
     profileSub.textContent = "Save drafts securely";
