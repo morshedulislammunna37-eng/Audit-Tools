@@ -48,13 +48,13 @@ const templateFields = {
 
 let activeTemplate = null;
 let generatedCount = Number(localStorage.getItem("auditGeneratedCount") || 0);
-let supabase = null;
+let supabaseClient = null;
 let currentUser = null;
 let authMode = "signin";
 let databaseDrafts = [];
 
 if (window.AUDIT_SUPABASE_URL && window.AUDIT_SUPABASE_ANON_KEY && window.supabase) {
-  supabase = window.supabase.createClient(window.AUDIT_SUPABASE_URL, window.AUDIT_SUPABASE_ANON_KEY);
+  supabaseClient = window.supabase.createClient(window.AUDIT_SUPABASE_URL, window.AUDIT_SUPABASE_ANON_KEY);
 }
 
 function escapeHtml(value) {
@@ -159,8 +159,8 @@ function getDrafts() {
   try { return JSON.parse(localStorage.getItem("auditDrafts") || "[]"); } catch { return []; }
 }
 async function loadDatabaseDrafts() {
-  if (!supabase || !currentUser) return;
-  const { data, error } = await supabase
+  if (!supabaseClient || !currentUser) return;
+  const { data, error } = await supabaseClient
     .from("documents")
     .select("id,template_id,title,data,status,created_at,updated_at")
     .eq("user_id", currentUser.id)
@@ -188,7 +188,7 @@ async function saveDraft() {
     return;
   }
   const draft = { id:crypto.randomUUID(), templateId:activeTemplate.id, title:activeTemplate.title, data:getData(), updated:new Date().toISOString() };
-  const { error } = await supabase.from("documents").insert({
+  const { error } = await supabaseClient.from("documents").insert({
     id:draft.id,
     user_id:currentUser.id,
     template_id:draft.templateId,
@@ -234,7 +234,7 @@ function showToast(message) {
 function openAuth() {
   document.getElementById("authOverlay").classList.remove("hidden");
   document.getElementById("authError").textContent = "";
-  document.getElementById("authEmail").focus();
+  document.getElementById(authMode === "signup" ? "authUsername" : "authUsernameLogin").focus();
 }
 function closeAuth() {
   document.getElementById("authOverlay").classList.add("hidden");
@@ -243,15 +243,18 @@ function updateUserUI() {
   const profileName = document.querySelector(".profile strong");
   const profileSub = document.querySelector(".profile small");
   const avatar = document.querySelector(".profile .avatar");
+  const authButton = document.getElementById("authButton");
   if (currentUser) {
     const name = currentUser.user_metadata?.full_name || currentUser.email?.split("@")[0] || "User";
     profileName.textContent = name;
     profileSub.textContent = "Signed in";
     avatar.textContent = name.split(" ").map(n => n[0]).join("").slice(0,2).toUpperCase();
+    authButton.textContent = "Sign out";
   } else {
     profileName.textContent = "Sign in";
     profileSub.textContent = "Save drafts securely";
     avatar.textContent = "IN";
+    authButton.textContent = "Sign in";
   }
   updateCounts();
   if (currentUser) loadDatabaseDrafts();
@@ -259,7 +262,7 @@ function updateUserUI() {
 }
 async function handleEmailAuth(event) {
   event.preventDefault();
-  if (!supabase) {
+  if (!supabaseClient) {
     document.getElementById("authError").textContent = "Supabase is not configured.";
     return;
   }
@@ -289,7 +292,7 @@ async function handleEmailAuth(event) {
       errorElement.textContent = "Please enter your username.";
       return;
     }
-    const { data: resolvedEmail, error: lookupError } = await supabase.rpc("get_login_email", {
+    const { data: resolvedEmail, error: lookupError } = await supabaseClient.rpc("get_login_email", {
       lookup_username: loginUsername
     });
     if (lookupError || !resolvedEmail) {
@@ -302,7 +305,7 @@ async function handleEmailAuth(event) {
     return;
   }
   const result = authMode === "signup"
-    ? await supabase.auth.signUp({
+    ? await supabaseClient.auth.signUp({
         email,
         password,
         options: {
@@ -310,7 +313,7 @@ async function handleEmailAuth(event) {
           data: { full_name: fullName, username: signupUsername }
         }
       })
-    : await supabase.auth.signInWithPassword({ email: loginEmail, password });
+    : await supabaseClient.auth.signInWithPassword({ email: loginEmail, password });
   if (result.error) {
     errorElement.textContent = result.error.message;
     return;
@@ -347,6 +350,18 @@ document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.ke
 document.getElementById("authClose").addEventListener("click", closeAuth);
 document.getElementById("authOverlay").addEventListener("click", event => { if (event.target.id === "authOverlay") closeAuth(); });
 document.getElementById("emailAuthForm").addEventListener("submit", handleEmailAuth);
+document.getElementById("authButton").addEventListener("click", async () => {
+  if (!currentUser) {
+    openAuth();
+    return;
+  }
+  const { error } =   await supabaseClient.auth.signOut();
+  if (error) {
+    showToast("Could not sign out");
+    return;
+  }
+  showToast("Signed out");
+});
 document.getElementById("authSwitch").addEventListener("click", () => {
   authMode = authMode === "signin" ? "signup" : "signin";
   document.getElementById("authTitle").textContent = authMode === "signin" ? "Sign in to your workspace" : "Create your workspace";
@@ -367,7 +382,7 @@ document.getElementById("authSwitch").addEventListener("click", () => {
   document.getElementById("authError").textContent = "";
 });
 document.getElementById("forgotPassword").addEventListener("click", async () => {
-  if (!supabase) {
+  if (!supabaseClient) {
     document.getElementById("authError").textContent = "Supabase is not configured.";
     return;
   }
@@ -376,14 +391,14 @@ document.getElementById("forgotPassword").addEventListener("click", async () => 
     document.getElementById("authError").textContent = "Enter your username first.";
     return;
   }
-  const { data: email, error: lookupError } = await supabase.rpc("get_login_email", {
+  const { data: email, error: lookupError } = await supabaseClient.rpc("get_login_email", {
     lookup_username: username
   });
   if (lookupError || !email) {
     document.getElementById("authError").textContent = "Username not found.";
     return;
   }
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
     redirectTo: window.location.origin + window.location.pathname
   });
   document.getElementById("authError").textContent = error
@@ -393,7 +408,7 @@ document.getElementById("forgotPassword").addEventListener("click", async () => 
 document.querySelector(".profile").addEventListener("click", async () => {
   if (currentUser) {
     if (window.confirm("Sign out of your audit workspace?")) {
-      await supabase.auth.signOut();
+      await supabaseClient.auth.signOut();
       showToast("Signed out");
     }
   } else {
@@ -401,12 +416,12 @@ document.querySelector(".profile").addEventListener("click", async () => {
   }
 });
 
-if (supabase) {
-  supabase.auth.getSession().then(({ data }) => {
+if (supabaseClient) {
+  supabaseClient.auth.getSession().then(({ data }) => {
     currentUser = data.session?.user || null;
     updateUserUI();
   });
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
     currentUser = session?.user || null;
     updateUserUI();
   });
