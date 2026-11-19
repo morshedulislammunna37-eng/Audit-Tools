@@ -32,12 +32,15 @@ alter table public.profiles enable row level security;
 alter table public.companies enable row level security;
 alter table public.documents enable row level security;
 
+drop policy if exists "Users manage their profile" on public.profiles;
 create policy "Users manage their profile" on public.profiles
   for all using (auth.uid() = id) with check (auth.uid() = id);
 
+drop policy if exists "Users manage their companies" on public.companies;
 create policy "Users manage their companies" on public.companies
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage their documents" on public.documents;
 create policy "Users manage their documents" on public.documents
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
