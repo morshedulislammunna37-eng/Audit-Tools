@@ -265,10 +265,27 @@ async function handleEmailAuth(event) {
   }
   const email = document.getElementById("authEmail").value.trim();
   const password = document.getElementById("authPassword").value;
+  const confirmPassword = document.getElementById("authPasswordConfirm").value;
+  const fullName = document.getElementById("authName").value.trim();
   const errorElement = document.getElementById("authError");
   errorElement.textContent = "";
+  if (authMode === "signup" && password !== confirmPassword) {
+    errorElement.textContent = "Passwords do not match.";
+    return;
+  }
+  if (authMode === "signup" && !fullName) {
+    errorElement.textContent = "Please enter your full name.";
+    return;
+  }
   const result = authMode === "signup"
-    ? await supabase.auth.signUp({ email, password })
+    ? await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
+          data: { full_name: fullName }
+        }
+      })
     : await supabase.auth.signInWithPassword({ email, password });
   if (result.error) {
     errorElement.textContent = result.error.message;
@@ -311,18 +328,30 @@ document.getElementById("authSwitch").addEventListener("click", () => {
   document.getElementById("authTitle").textContent = authMode === "signin" ? "Sign in to your workspace" : "Create your workspace";
   document.getElementById("emailLogin").textContent = authMode === "signin" ? "Sign in" : "Create account";
   document.getElementById("authSwitch").textContent = authMode === "signin" ? "New here? Create an account" : "Already have an account? Sign in";
+  document.getElementById("nameField").classList.toggle("hidden", authMode !== "signup");
+  document.getElementById("confirmField").classList.toggle("hidden", authMode !== "signup");
+  document.getElementById("authPassword").autocomplete = authMode === "signin" ? "current-password" : "new-password";
+  document.getElementById("forgotPassword").classList.toggle("hidden", authMode !== "signin");
+  document.getElementById("authName").required = authMode === "signup";
+  document.getElementById("authPasswordConfirm").required = authMode === "signup";
   document.getElementById("authError").textContent = "";
 });
-document.getElementById("googleLogin").addEventListener("click", async () => {
+document.getElementById("forgotPassword").addEventListener("click", async () => {
   if (!supabase) {
     document.getElementById("authError").textContent = "Supabase is not configured.";
     return;
   }
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider:"google",
-    options:{ redirectTo: window.location.origin + window.location.pathname }
+  const email = document.getElementById("authEmail").value.trim();
+  if (!email) {
+    document.getElementById("authError").textContent = "Enter your email first.";
+    return;
+  }
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname
   });
-  if (error) document.getElementById("authError").textContent = error.message;
+  document.getElementById("authError").textContent = error
+    ? error.message
+    : "Password reset instructions sent to your email.";
 });
 document.querySelector(".profile").addEventListener("click", async () => {
   if (currentUser) {
