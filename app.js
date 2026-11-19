@@ -48,6 +48,14 @@ const templateFields = {
 
 let activeTemplate = null;
 let generatedCount = Number(localStorage.getItem("auditGeneratedCount") || 0);
+let supabase = null;
+let currentUser = null;
+let authMode = "signin";
+let databaseDrafts = [];
+
+if (window.AUDIT_SUPABASE_URL && window.AUDIT_SUPABASE_ANON_KEY && window.supabase) {
+  supabase = window.supabase.createClient(window.AUDIT_SUPABASE_URL, window.AUDIT_SUPABASE_ANON_KEY);
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[c]));
@@ -146,13 +154,53 @@ function updatePreview() {
   document.getElementById("previewStatus").textContent = "Auto-updated";
 }
 
-function getDrafts() { try { return JSON.parse(localStorage.getItem("auditDrafts") || "[]"); } catch { return []; } }
-function saveDraft() {
+function getDrafts() {
+  if (currentUser) return databaseDrafts;
+  try { return JSON.parse(localStorage.getItem("auditDrafts") || "[]"); } catch { return []; }
+}
+async function loadDatabaseDrafts() {
+  if (!supabase || !currentUser) return;
+  const { data, error } = await supabase
+    .from("documents")
+    .select("id,template_id,title,data,status,created_at,updated_at")
+    .eq("user_id", currentUser.id)
+    .eq("status", "draft")
+    .order("updated_at", { ascending: false });
+  if (error) {
+    showToast("Could not load drafts");
+    return;
+  }
+  databaseDrafts = (data || []).map(d => ({
+    id:d.id,
+    templateId:d.template_id,
+    title:d.title,
+    data:d.data,
+    updated:d.updated_at
+  }));
+  updateCounts();
+  if (!document.getElementById("draftsView").classList.contains("hidden")) renderDrafts();
+}
+async function saveDraft() {
   if (!activeTemplate) return;
-  const drafts = getDrafts();
-  const draft = { id:Date.now(), templateId:activeTemplate.id, title:activeTemplate.title, data:getData(), updated:new Date().toISOString() };
-  drafts.unshift(draft);
-  localStorage.setItem("auditDrafts", JSON.stringify(drafts.slice(0,50)));
+  if (!currentUser) {
+    openAuth();
+    showToast("Sign in to save to your account");
+    return;
+  }
+  const draft = { id:crypto.randomUUID(), templateId:activeTemplate.id, title:activeTemplate.title, data:getData(), updated:new Date().toISOString() };
+  const { error } = await supabase.from("documents").insert({
+    id:draft.id,
+    user_id:currentUser.id,
+    template_id:draft.templateId,
+    title:draft.title,
+    data:draft.data,
+    status:"draft"
+  });
+  if (error) {
+    showToast("Could not save draft");
+    return;
+  }
+  databaseDrafts.unshift(draft);
   updateCounts();
   showToast("Draft saved successfully");
   renderDrafts();
@@ -163,7 +211,7 @@ function renderDrafts() {
   if (!drafts.length) { list.innerHTML = `<div class="draft-empty"><div><strong>No saved drafts</strong><br><br>Create a letter and save it for later.</div></div>`; return; }
   list.innerHTML = drafts.map(d => `<div class="draft-item"><div><strong>${escapeHtml(d.title)}</strong><small>${escapeHtml(d.data.company || "Unnamed company")} · ${new Date(d.updated).toLocaleDateString("en-GB")}</small></div><button class="secondary-button" data-draft="${d.id}">Open</button></div>`).join("");
   list.querySelectorAll("[data-draft]").forEach(btn => btn.addEventListener("click", () => {
-    const draft = drafts.find(d => d.id === Number(btn.dataset.draft));
+    const draft = drafts.find(d => String(d.id) === String(btn.dataset.draft));
     openTemplate(draft.templateId);
     setTimeout(() => setData(draft.data), 0);
   }));
@@ -181,6 +229,57 @@ function showToast(message) {
   toast.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+function openAuth() {
+  document.getElementById("authOverlay").classList.remove("hidden");
+  document.getElementById("authError").textContent = "";
+  document.getElementById("authEmail").focus();
+}
+function closeAuth() {
+  document.getElementById("authOverlay").classList.add("hidden");
+}
+function updateUserUI() {
+  const profileName = document.querySelector(".profile strong");
+  const profileSub = document.querySelector(".profile small");
+  const avatar = document.querySelector(".profile .avatar");
+  if (currentUser) {
+    const name = currentUser.user_metadata?.full_name || currentUser.email?.split("@")[0] || "User";
+    profileName.textContent = name;
+    profileSub.textContent = "Signed in";
+    avatar.textContent = name.split(" ").map(n => n[0]).join("").slice(0,2).toUpper();
+  } else {
+    profileName.textContent = "Sign in";
+    profileSub.textContent = "Save drafts securely";
+    avatar.textContent = "IN";
+  }
+  updateCounts();
+  if (currentUser) loadDatabaseDrafts();
+  else databaseDrafts = [];
+}
+async function handleEmailAuth(event) {
+  event.preventDefault();
+  if (!supabase) {
+    document.getElementById("authError").textContent = "Supabase is not configured.";
+    return;
+  }
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const errorElement = document.getElementById("authError");
+  errorElement.textContent = "";
+  const result = authMode === "signup"
+    ? await supabase.auth.signUp({ email, password })
+    : await supabase.auth.signInWithPassword({ email, password });
+  if (result.error) {
+    errorElement.textContent = result.error.message;
+    return;
+  }
+  if (authMode === "signup" && !result.data.session) {
+    errorElement.textContent = "Account created. Check your email to confirm.";
+    return;
+  }
+  closeAuth();
+  showToast("Signed in successfully");
 }
 
 document.querySelectorAll(".nav-item[data-view]").forEach(btn => btn.addEventListener("click", () => showView(btn.dataset.view)));
@@ -203,6 +302,49 @@ document.querySelectorAll(".filter").forEach(btn => btn.addEventListener("click"
   renderTemplates("allTemplateGrid");
 }));
 document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); document.getElementById("globalSearch").focus(); } });
+
+document.getElementById("authClose").addEventListener("click", closeAuth);
+document.getElementById("authOverlay").addEventListener("click", event => { if (event.target.id === "authOverlay") closeAuth(); });
+document.getElementById("emailAuthForm").addEventListener("submit", handleEmailAuth);
+document.getElementById("authSwitch").addEventListener("click", () => {
+  authMode = authMode === "signin" ? "signup" : "signin";
+  document.getElementById("authTitle").textContent = authMode === "signin" ? "Sign in to your workspace" : "Create your workspace";
+  document.getElementById("emailLogin").textContent = authMode === "signin" ? "Sign in" : "Create account";
+  document.getElementById("authSwitch").textContent = authMode === "signin" ? "New here? Create an account" : "Already have an account? Sign in";
+  document.getElementById("authError").textContent = "";
+});
+document.getElementById("googleLogin").addEventListener("click", async () => {
+  if (!supabase) {
+    document.getElementById("authError").textContent = "Supabase is not configured.";
+    return;
+  }
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider:"google",
+    options:{ redirectTo: window.location.origin + window.location.pathname }
+  });
+  if (error) document.getElementById("authError").textContent = error.message;
+});
+document.querySelector(".profile").addEventListener("click", async () => {
+  if (currentUser) {
+    if (window.confirm("Sign out of your audit workspace?")) {
+      await supabase.auth.signOut();
+      showToast("Signed out");
+    }
+  } else {
+    openAuth();
+  }
+});
+
+if (supabase) {
+  supabase.auth.getSession().then(({ data }) => {
+    currentUser = data.session?.user || null;
+    updateUserUI();
+  });
+  supabase.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user || null;
+    updateUserUI();
+  });
+}
 
 todayText();
 renderTemplates("templateGrid", 10);

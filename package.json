@@ -5,6 +5,6 @@
   "scripts": {
     "start": "npx serve .",
     "dev": "npx serve .",
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').mkdirSync('dist'); for (const file of ['index.html','styles.css','app.js']) require('fs').copyFileSync(file,'dist/'+file)\""
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').mkdirSync('dist'); for (const file of ['index.html','styles.css','app.js','supabase-config.js']) require('fs').copyFileSync(file,'dist/'+file)\""
   }
 }
