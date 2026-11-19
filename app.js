@@ -263,6 +263,8 @@ async function handleEmailAuth(event) {
     document.getElementById("authError").textContent = "Supabase is not configured.";
     return;
   }
+  const signupUsername = document.getElementById("authUsername").value.trim().toLowerCase();
+  const loginUsername = document.getElementById("authUsernameLogin").value.trim().toLowerCase();
   const email = document.getElementById("authEmail").value.trim();
   const password = document.getElementById("authPassword").value;
   const confirmPassword = document.getElementById("authPasswordConfirm").value;
@@ -277,16 +279,38 @@ async function handleEmailAuth(event) {
     errorElement.textContent = "Please enter your full name.";
     return;
   }
+  if (authMode === "signup" && !/^[a-z0-9._-]{3,30}$/.test(signupUsername)) {
+    errorElement.textContent = "Username must be 3-30 characters and use letters, numbers, dot, underscore or hyphen.";
+    return;
+  }
+  let loginEmail = email;
+  if (authMode === "signin") {
+    if (!loginUsername) {
+      errorElement.textContent = "Please enter your username.";
+      return;
+    }
+    const { data: resolvedEmail, error: lookupError } = await supabase.rpc("get_login_email", {
+      lookup_username: loginUsername
+    });
+    if (lookupError || !resolvedEmail) {
+      errorElement.textContent = "Username or password is incorrect.";
+      return;
+    }
+    loginEmail = resolvedEmail;
+  } else if (!email) {
+    errorElement.textContent = "Please enter your email address.";
+    return;
+  }
   const result = authMode === "signup"
     ? await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: window.location.origin + window.location.pathname,
-          data: { full_name: fullName }
+          data: { full_name: fullName, username: signupUsername }
         }
       })
-    : await supabase.auth.signInWithPassword({ email, password });
+    : await supabase.auth.signInWithPassword({ email: loginEmail, password });
   if (result.error) {
     errorElement.textContent = result.error.message;
     return;
@@ -328,11 +352,17 @@ document.getElementById("authSwitch").addEventListener("click", () => {
   document.getElementById("authTitle").textContent = authMode === "signin" ? "Sign in to your workspace" : "Create your workspace";
   document.getElementById("emailLogin").textContent = authMode === "signin" ? "Sign in" : "Create account";
   document.getElementById("authSwitch").textContent = authMode === "signin" ? "New here? Create an account" : "Already have an account? Sign in";
+  document.getElementById("usernameField").classList.toggle("hidden", authMode !== "signup");
+  document.getElementById("signupEmailField").classList.toggle("hidden", authMode !== "signup");
+  document.getElementById("loginIdentityLabel").classList.toggle("hidden", authMode !== "signin");
   document.getElementById("nameField").classList.toggle("hidden", authMode !== "signup");
   document.getElementById("confirmField").classList.toggle("hidden", authMode !== "signup");
   document.getElementById("authPassword").autocomplete = authMode === "signin" ? "current-password" : "new-password";
   document.getElementById("forgotPassword").classList.toggle("hidden", authMode !== "signin");
   document.getElementById("authName").required = authMode === "signup";
+  document.getElementById("authUsername").required = authMode === "signup";
+  document.getElementById("authEmail").required = authMode === "signup";
+  document.getElementById("authUsernameLogin").required = authMode === "signin";
   document.getElementById("authPasswordConfirm").required = authMode === "signup";
   document.getElementById("authError").textContent = "";
 });

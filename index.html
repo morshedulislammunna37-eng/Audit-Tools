@@ -153,8 +153,10 @@
       <h2 id="authTitle">Sign in to your workspace</h2>
       <p>Save drafts and manage audit documents securely.</p>
       <form id="emailAuthForm">
+        <label class="signup-only hidden" id="usernameField">Username<input id="authUsername" type="text" autocomplete="username" minlength="3" placeholder="rahim_audit"></label>
         <label class="signup-only hidden" id="nameField">Full name<input id="authName" type="text" autocomplete="name" placeholder="Rahim Ahmed"></label>
-        <label>Email address<input id="authEmail" type="email" autocomplete="email" required placeholder="you@company.com"></label>
+        <label id="loginIdentityLabel">Username<input id="authUsernameLogin" type="text" autocomplete="username" required placeholder="Your username"></label>
+        <label class="signup-only hidden" id="signupEmailField">Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@company.com"></label>
         <label>Password<input id="authPassword" type="password" autocomplete="current-password" required minlength="6" placeholder="Minimum 6 characters"></label>
         <label class="signup-only hidden" id="confirmField">Confirm password<input id="authPasswordConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="Re-enter password"></label>
         <button class="forgot-button" id="forgotPassword" type="button">Forgot password?</button>
